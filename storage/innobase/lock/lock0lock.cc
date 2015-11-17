@@ -2268,6 +2268,60 @@ lock_rec_lock_slow(
 	return(err);
 }
 
+UNIV_INTERN
+void
+lock_rec_print_verbose0(
+/*===========*/
+	FILE*		file,	/*!< in: file where to print */
+	ulint mode,
+    ulint           space,
+    ulint           page_no,
+    ulint heap_no,
+    dict_index_t* index,
+    trx_t* trx)
+{
+	ut_ad(lock_mutex_own());
+
+    // fprintf(file, "n_uniq: %u\n", index->n_uniq);
+
+	fprintf(file, "RECORD LOCK space %lu page_no %lu heap_no %lu ",
+            (ulong) space,
+            (ulong) page_no,
+            (ulong) heap_no);
+
+	dict_index_name_print(file, trx, index);
+	fprintf(file, " trx id " TRX_ID_FMT, trx->id);
+
+    ulint cmode = mode;
+    mode = mode & LOCK_MODE_MASK;
+    ulint precise_mode = cmode - mode;
+    fputs(" lock_mode", file);
+	if (mode == LOCK_S) {
+		fputs(" S", file);
+	} else if (mode == LOCK_X) {
+		fputs(" X", file);
+	} else {
+		ut_error;
+	}
+
+    if (precise_mode == LOCK_ORDINARY) {
+        fputs(" ORDINARY", file);
+    }
+
+    if (precise_mode & LOCK_GAP) {
+        fputs(" GAP", file);
+    }
+
+    if (precise_mode & LOCK_REC_NOT_GAP) {
+        fputs(" REC_NOT_GAP", file);
+    }
+
+    if (precise_mode & LOCK_INSERT_INTENTION) {
+        fputs(" INSERT_INTENTION", file);
+    }
+
+    putc('\n', file);
+}
 /*********************************************************************//**
 Tries to lock the specified record in the mode requested. If not immediately
 possible, enqueues a waiting lock request. This is a low-level function
@@ -2304,6 +2358,10 @@ lock_rec_lock(
 	      || mode - (LOCK_MODE_MASK & mode) == LOCK_REC_NOT_GAP
 	      || mode - (LOCK_MODE_MASK & mode) == 0);
 	ut_ad(dict_index_is_clust(index) || !dict_index_is_online_ddl(index));
+
+    lock_rec_print_verbose0(stderr, mode,
+            buf_block_get_space(block), buf_block_get_page_no(block), heap_no,
+            index, thr_get_trx(thr));
 
 	/* We try a simplified and faster subroutine for the most
 	common cases */
@@ -2483,6 +2541,11 @@ lock_rec_dequeue_from_page(
 	space = in_lock->un_member.rec_lock.space;
 	page_no = in_lock->un_member.rec_lock.page_no;
 
+
+	fputs("UNLOCK ", stderr);
+    lock_rec_print_verbose0(stderr, lock_get_mode(in_lock) & LOCK_MODE_MASK,
+            space, page_no, 0, in_lock->index, in_lock->trx);
+
 	in_lock->index->table->n_rec_locks--;
 
 	HASH_DELETE(lock_t, hash, lock_sys->rec_hash,
@@ -2506,7 +2569,6 @@ lock_rec_dequeue_from_page(
 
 			/* Grant the lock */
 			ut_ad(lock->trx != in_lock->trx);
-			lock_grant(lock);
 		}
 	}
 }
@@ -4373,6 +4435,40 @@ lock_table_other_has_incompatible(
 	return(NULL);
 }
 
+UNIV_INTERN
+void
+lock_table_print_verbose0(
+/*=============*/
+	FILE*		file,	/*!< in: file where to print */
+	ulint flags,
+	dict_table_t*	table,	/*!< in/out: database table
+				in dictionary cache */
+	enum lock_mode	mode,	/*!< in: lock mode */
+	trx_t* trx)	/*!< in: query thread */
+{
+	fputs("TABLE LOCK table ", file);
+	ut_print_name(file, trx, TRUE,
+		      table->name);
+	fprintf(file, " trx id " TRX_ID_FMT, trx->id);
+
+    fputs(" lock_mode", file);
+	if (mode == LOCK_S) {
+		fputs(" S", file);
+	} else if (mode == LOCK_X) {
+		fputs(" X", file);
+	} else if (mode == LOCK_IS) {
+		fputs(" IS", file);
+	} else if (mode == LOCK_IX) {
+		fputs(" IX", file);
+	} else if (mode == LOCK_AUTO_INC) {
+		fputs(" AUTO-INC", file);
+	} else {
+		fprintf(file, " unknown lock mode %lu",
+			(ulong) mode);
+	}
+
+	putc('\n', file);
+}
 /*********************************************************************//**
 Locks the specified database table in the mode given. If the lock cannot
 be granted immediately, the query thread is put to wait.
@@ -4402,6 +4498,8 @@ lock_table(
 	ut_a(flags == 0);
 
 	trx = thr_get_trx(thr);
+
+    lock_table_print_verbose0(stderr, flags, table, mode, trx);
 
 	/* Look for equal or stronger locks the same trx already
 	has on the table. No need to acquire the lock mutex here
@@ -4520,6 +4618,10 @@ lock_table_dequeue(
 	ut_a(lock_get_type_low(in_lock) == LOCK_TABLE);
 
 	lock = UT_LIST_GET_NEXT(un_member.tab_lock.locks, in_lock);
+
+    fputs("UNLOCK ", stderr);
+    lock_table_print_verbose0(stderr, 0, in_lock->un_member.tab_lock.table,
+            lock_get_mode(in_lock), in_lock->trx);
 
 	lock_table_remove_low(in_lock);
 
@@ -5953,6 +6055,11 @@ lock_rec_insert_check_and_lock(
 	BTR_NO_LOCKING_FLAG and skip the locking altogether. */
 	ut_ad(lock_table_has(trx, index->table, LOCK_IX));
 
+    lock_rec_print_verbose0(stderr,
+            static_cast<lock_mode>(LOCK_X | LOCK_GAP | LOCK_INSERT_INTENTION),
+            buf_block_get_space(block), buf_block_get_page_no(block),
+            next_rec_heap_no, index, trx);
+
 	lock = lock_rec_get_first(block, next_rec_heap_no);
 
 	if (UNIV_LIKELY(lock == NULL)) {
@@ -6154,6 +6261,7 @@ lock_clust_rec_modify_check_and_lock(
 
 	err = lock_rec_lock(TRUE, LOCK_X | LOCK_REC_NOT_GAP,
 			    block, heap_no, index, thr);
+    // rec_print(stderr, rec, index);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6214,6 +6322,7 @@ lock_sec_rec_modify_check_and_lock(
 
 	err = lock_rec_lock(TRUE, LOCK_X | LOCK_REC_NOT_GAP,
 			    block, heap_no, index, thr);
+    // rec_print(stderr, rec, index);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6316,6 +6425,7 @@ lock_sec_rec_read_check_and_lock(
 
 	err = lock_rec_lock(FALSE, mode | gap_mode,
 			    block, heap_no, index, thr);
+    // rec_print(stderr, rec, index);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6388,6 +6498,7 @@ lock_clust_rec_read_check_and_lock(
 
 	err = lock_rec_lock(FALSE, mode | gap_mode,
 			    block, heap_no, index, thr);
+    // rec_print(stderr, rec, index);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
