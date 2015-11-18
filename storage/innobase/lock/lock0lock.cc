@@ -2283,6 +2283,10 @@ lock_rec_print_verbose0(
 {
 	ut_ad(lock_mutex_own());
 
+    // if (rec) {
+    //     rec_print(stderr, rec, index);
+    // }
+
 	fprintf(file, "RECORD LOCK space %lu page_no %lu heap_no %lu ",
             (ulong) space,
             (ulong) page_no,
@@ -2320,10 +2324,6 @@ lock_rec_print_verbose0(
     }
 
     putc('\n', file);
-
-    if (rec) {
-        rec_print(stderr, rec, index);
-    }
 }
 /*********************************************************************//**
 Tries to lock the specified record in the mode requested. If not immediately

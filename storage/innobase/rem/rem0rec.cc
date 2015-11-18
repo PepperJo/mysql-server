@@ -1869,7 +1869,8 @@ rec_print_new(
 /*==========*/
 	FILE*		file,	/*!< in: file where to print */
 	const rec_t*	rec,	/*!< in: physical record */
-	const ulint*	offsets)/*!< in: array returned by rec_get_offsets() */
+	const ulint*	offsets,
+    const dict_index_t *index)/*!< in: array returned by rec_get_offsets() */
 {
 	ut_ad(rec);
 	ut_ad(offsets);
@@ -1881,14 +1882,30 @@ rec_print_new(
 	}
 
 	fprintf(file, "PHYSICAL RECORD: n_fields %lu;"
-		" compact format; info bits %lu\n",
+		" compact format; info bits %lu; ",
 		(ulong) rec_offs_n_fields(offsets),
 		(ulong) rec_get_info_bits(rec, TRUE));
+    if (index) {
+        dict_index_name_print(file, NULL, index);
+    }
+    fputc('\n', stderr);
 
 	rec_print_comp(file, rec, offsets);
 	rec_validate(rec, offsets);
 }
 
+/***************************************************************//**
+Prints a physical record. */
+UNIV_INTERN
+void
+rec_print_new(
+/*==========*/
+	FILE*		file,	/*!< in: file where to print */
+	const rec_t*	rec,	/*!< in: physical record */
+	const ulint*	offsets)/*!< in: array returned by rec_get_offsets() */
+{
+    rec_print_new(file, rec, offsets, NULL);
+}
 /***************************************************************//**
 Prints a physical record. */
 UNIV_INTERN
@@ -1911,7 +1928,7 @@ rec_print(
 
 		rec_print_new(file, rec,
 			      rec_get_offsets(rec, index, offsets_,
-					      ULINT_UNDEFINED, &heap));
+					      ULINT_UNDEFINED, &heap), index);
 		if (UNIV_LIKELY_NULL(heap)) {
 			mem_heap_free(heap);
 		}

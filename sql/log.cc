@@ -1825,6 +1825,8 @@ bool MYSQL_QUERY_LOG::write(time_t event_time, const char *user_host,
 
   mysql_mutex_lock(&LOCK_log);
 
+  fprintf(stderr, "QUERY %s\n", sql_text);
+
   /* Test if someone closed between the is_open test and lock */
   if (is_open())
   {
