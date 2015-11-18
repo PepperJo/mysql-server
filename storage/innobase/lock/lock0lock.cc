@@ -2277,12 +2277,11 @@ lock_rec_print_verbose0(
     ulint           space,
     ulint           page_no,
     ulint heap_no,
+    const rec_t*        rec,
     dict_index_t* index,
     trx_t* trx)
 {
 	ut_ad(lock_mutex_own());
-
-    // fprintf(file, "n_uniq: %u\n", index->n_uniq);
 
 	fprintf(file, "RECORD LOCK space %lu page_no %lu heap_no %lu ",
             (ulong) space,
@@ -2321,6 +2320,10 @@ lock_rec_print_verbose0(
     }
 
     putc('\n', file);
+
+    if (rec) {
+        rec_print(stderr, rec, index);
+    }
 }
 /*********************************************************************//**
 Tries to lock the specified record in the mode requested. If not immediately
@@ -2345,7 +2348,8 @@ lock_rec_lock(
 					the record */
 	ulint			heap_no,/*!< in: heap number of record */
 	dict_index_t*		index,	/*!< in: index of record */
-	que_thr_t*		thr)	/*!< in: query thread */
+	que_thr_t*		thr,
+    const rec_t*        rec)	/*!< in: query thread */
 {
 	ut_ad(lock_mutex_own());
 	ut_ad((LOCK_MODE_MASK & mode) != LOCK_S
@@ -2361,7 +2365,7 @@ lock_rec_lock(
 
     lock_rec_print_verbose0(stderr, mode,
             buf_block_get_space(block), buf_block_get_page_no(block), heap_no,
-            index, thr_get_trx(thr));
+            rec, index, thr_get_trx(thr));
 
 	/* We try a simplified and faster subroutine for the most
 	common cases */
@@ -2544,7 +2548,7 @@ lock_rec_dequeue_from_page(
 
 	fputs("UNLOCK ", stderr);
     lock_rec_print_verbose0(stderr, lock_get_mode(in_lock) & LOCK_MODE_MASK,
-            space, page_no, 0, in_lock->index, in_lock->trx);
+            space, page_no, 0, NULL, in_lock->index, in_lock->trx);
 
 	in_lock->index->table->n_rec_locks--;
 
@@ -6058,7 +6062,7 @@ lock_rec_insert_check_and_lock(
     lock_rec_print_verbose0(stderr,
             static_cast<lock_mode>(LOCK_X | LOCK_GAP | LOCK_INSERT_INTENTION),
             buf_block_get_space(block), buf_block_get_page_no(block),
-            next_rec_heap_no, index, trx);
+            next_rec_heap_no, next_rec, index, trx);
 
 	lock = lock_rec_get_first(block, next_rec_heap_no);
 
@@ -6260,8 +6264,7 @@ lock_clust_rec_modify_check_and_lock(
 	ut_ad(lock_table_has(thr_get_trx(thr), index->table, LOCK_IX));
 
 	err = lock_rec_lock(TRUE, LOCK_X | LOCK_REC_NOT_GAP,
-			    block, heap_no, index, thr);
-    // rec_print(stderr, rec, index);
+			    block, heap_no, index, thr, rec);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6321,8 +6324,7 @@ lock_sec_rec_modify_check_and_lock(
 	ut_ad(lock_table_has(thr_get_trx(thr), index->table, LOCK_IX));
 
 	err = lock_rec_lock(TRUE, LOCK_X | LOCK_REC_NOT_GAP,
-			    block, heap_no, index, thr);
-    // rec_print(stderr, rec, index);
+			    block, heap_no, index, thr, rec);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6424,8 +6426,7 @@ lock_sec_rec_read_check_and_lock(
 	      || lock_table_has(thr_get_trx(thr), index->table, LOCK_IS));
 
 	err = lock_rec_lock(FALSE, mode | gap_mode,
-			    block, heap_no, index, thr);
-    // rec_print(stderr, rec, index);
+			    block, heap_no, index, thr, rec);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
@@ -6497,8 +6498,7 @@ lock_clust_rec_read_check_and_lock(
 	      || lock_table_has(thr_get_trx(thr), index->table, LOCK_IS));
 
 	err = lock_rec_lock(FALSE, mode | gap_mode,
-			    block, heap_no, index, thr);
-    // rec_print(stderr, rec, index);
+			    block, heap_no, index, thr, rec);
 
 	MONITOR_INC(MONITOR_NUM_RECLOCK_REQ);
 
