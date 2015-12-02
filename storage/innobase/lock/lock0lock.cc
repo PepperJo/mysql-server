@@ -2287,6 +2287,10 @@ lock_rec_print_verbose0(
     //     rec_print(stderr, rec, index);
     // }
 
+    if (strstr(index->table_name, "innodb") != NULL) {
+        return;
+    }
+
 	fprintf(file, "RECORD LOCK space %lu page_no %lu heap_no %lu ",
             (ulong) space,
             (ulong) page_no,
@@ -4450,6 +4454,10 @@ lock_table_print_verbose0(
 	enum lock_mode	mode,	/*!< in: lock mode */
 	trx_t* trx)	/*!< in: query thread */
 {
+    if (strstr(table->name, "innodb") != NULL) {
+        return;
+    }
+
 	fputs("TABLE LOCK table ", file);
 	ut_print_name(file, trx, TRUE,
 		      table->name);
