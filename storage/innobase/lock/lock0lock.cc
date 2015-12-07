@@ -2279,7 +2279,8 @@ lock_rec_print_verbose0(
     ulint heap_no,
     const rec_t*        rec,
     dict_index_t* index,
-    trx_t* trx)
+    trx_t* trx,
+    bool unlock)
 {
 	ut_ad(lock_mutex_own());
 
@@ -2289,6 +2290,10 @@ lock_rec_print_verbose0(
 
     if (strstr(index->table_name, "innodb") != NULL) {
         return;
+    }
+
+    if (unlock) {
+        fputs("UNLOCK ", file);
     }
 
 	fprintf(file, "RECORD LOCK space %lu page_no %lu heap_no %lu ",
@@ -2369,7 +2374,7 @@ lock_rec_lock(
 
     lock_rec_print_verbose0(stderr, mode,
             buf_block_get_space(block), buf_block_get_page_no(block), heap_no,
-            rec, index, thr_get_trx(thr));
+            rec, index, thr_get_trx(thr), false);
 
 	/* We try a simplified and faster subroutine for the most
 	common cases */
@@ -2549,10 +2554,8 @@ lock_rec_dequeue_from_page(
 	space = in_lock->un_member.rec_lock.space;
 	page_no = in_lock->un_member.rec_lock.page_no;
 
-
-	fputs("UNLOCK ", stderr);
     lock_rec_print_verbose0(stderr, lock_get_mode(in_lock) & LOCK_MODE_MASK,
-            space, page_no, 0, NULL, in_lock->index, in_lock->trx);
+            space, page_no, 0, NULL, in_lock->index, in_lock->trx, true);
 
 	in_lock->index->table->n_rec_locks--;
 
@@ -4452,12 +4455,16 @@ lock_table_print_verbose0(
 	dict_table_t*	table,	/*!< in/out: database table
 				in dictionary cache */
 	enum lock_mode	mode,	/*!< in: lock mode */
-	trx_t* trx)	/*!< in: query thread */
+	trx_t* trx,
+    bool unlock)	/*!< in: query thread */
 {
     if (strstr(table->name, "innodb") != NULL) {
         return;
     }
 
+    if (unlock) {
+        fputs("UNLOCK ", file);
+    }
 	fputs("TABLE LOCK table ", file);
 	ut_print_name(file, trx, TRUE,
 		      table->name);
@@ -4511,7 +4518,7 @@ lock_table(
 
 	trx = thr_get_trx(thr);
 
-    lock_table_print_verbose0(stderr, flags, table, mode, trx);
+    lock_table_print_verbose0(stderr, flags, table, mode, trx, false);
 
 	/* Look for equal or stronger locks the same trx already
 	has on the table. No need to acquire the lock mutex here
@@ -4631,9 +4638,8 @@ lock_table_dequeue(
 
 	lock = UT_LIST_GET_NEXT(un_member.tab_lock.locks, in_lock);
 
-    fputs("UNLOCK ", stderr);
     lock_table_print_verbose0(stderr, 0, in_lock->un_member.tab_lock.table,
-            lock_get_mode(in_lock), in_lock->trx);
+            lock_get_mode(in_lock), in_lock->trx, true);
 
 	lock_table_remove_low(in_lock);
 
@@ -6070,7 +6076,7 @@ lock_rec_insert_check_and_lock(
     lock_rec_print_verbose0(stderr,
             static_cast<lock_mode>(LOCK_X | LOCK_GAP | LOCK_INSERT_INTENTION),
             buf_block_get_space(block), buf_block_get_page_no(block),
-            next_rec_heap_no, next_rec, index, trx);
+            next_rec_heap_no, next_rec, index, trx, false);
 
 	lock = lock_rec_get_first(block, next_rec_heap_no);
 
